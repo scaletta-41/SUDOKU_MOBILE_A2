@@ -1,1 +1,22 @@
-start with window and empty board
+//start with window and empty board
+
+int tile = 50;
+int edge = 20;
+
+void settings() {
+  size(edge*2 + tile*9, edge*2 + tile*9);
+}
+
+void setup() {
+  surface.setTitle("Sudoku");
+  noStroke();
+}
+
+void draw() {
+  background(245);
+
+  // board placeholder (no grid yet)
+  fill(255);
+  rect(edge, edge, tile*9, tile*9);
+}
+
