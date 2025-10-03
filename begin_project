@@ -14,9 +14,22 @@ void setup() {
 
 void draw() {
   background(245);
-
-  // board placeholder (no grid yet)
   fill(255);
   rect(edge, edge, tile*9, tile*9);
+  stroke(0, 0, 0, 60);
+  strokeWeight(1);
+  for (int i = 1; i < 9; i++) {
+    // horizontal lines
+    line(edge, edge + i*tile, edge + tile*9, edge + i*tile);
+    // vertical lines
+    line(edge + i*tile, edge, edge + i*tile, edge + tile*9);
+  }
+  stroke(0);
+  strokeWeight(2);
+  for (int i = 0; i <= 9; i += 3) {
+    // horizontal thick lines
+    line(edge, edge + i*tile, edge + tile*9, edge + i*tile);
+    // vertical thick lines
+    line(edge + i*tile, edge, edge + i*tile, edge + tile*9);
+  }
 }
-
