@@ -1,7 +1,7 @@
-//start with window and empty board
+int tile = 50;   
+int edge = 20;   
 
-int tile = 50;
-int edge = 20;
+int[][] grid = new int[9][9];   
 
 void settings() {
   size(edge*2 + tile*9, edge*2 + tile*9);
@@ -10,26 +10,66 @@ void settings() {
 void setup() {
   surface.setTitle("Sudoku");
   noStroke();
+  loadPuzzle();       // import 009720483.txt
+  textAlign(CENTER, CENTER);
+  textSize(tile * 0.5);
 }
 
 void draw() {
   background(245);
+
   fill(255);
   rect(edge, edge, tile*9, tile*9);
+  
+  // thin lines
   stroke(0, 0, 0, 60);
   strokeWeight(1);
   for (int i = 1; i < 9; i++) {
-    // horizontal lines
     line(edge, edge + i*tile, edge + tile*9, edge + i*tile);
-    // vertical lines
     line(edge + i*tile, edge, edge + i*tile, edge + tile*9);
   }
+
+  // thick lines
   stroke(0);
   strokeWeight(2);
   for (int i = 0; i <= 9; i += 3) {
-    // horizontal thick lines
     line(edge, edge + i*tile, edge + tile*9, edge + i*tile);
-    // vertical thick lines
     line(edge + i*tile, edge, edge + i*tile, edge + tile*9);
+  }
+
+  // draw numbers from grid
+  fill(20); 
+  for (int r = 0; r < 9; r++) {
+    for (int c = 0; c < 9; c++) {
+      int v = grid[r][c];
+      if (v != 0) {
+        float x = edge + c*tile + tile/2;
+        float y = edge + r*tile + tile/2 - 2;
+        text(v, x, y);
+      }
+    }
+  }
+}
+
+void loadPuzzle() {
+  String[] lines = null;
+  try {
+    lines = loadStrings("009720483.txt"); 
+  } catch (Exception e) {
+    
+  }
+
+  if (lines == null || lines.length < 9) 
+      return;
+
+  for (int r = 0; r < 9; r++) {
+    String row = lines[r];
+    while (row.length() < 9) row += "0";
+    for (int c = 0; c < 9; c++) {
+      char ch = row.charAt(c);
+      int v = 0;
+      if (ch >= '1' && ch <= '9') v = ch - '0';
+      grid[r][c] = v;
+    }
   }
 }
