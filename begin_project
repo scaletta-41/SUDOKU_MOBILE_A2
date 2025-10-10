@@ -1,73 +1,297 @@
-int tile = 50;   
-int edge = 20;   
+String[] dataLines;
+int[][] board = new int[9][9];
+boolean[][] fix = new boolean[9][9];     
+ArrayList<Cell> wrong = new ArrayList<Cell>(); 
 
-int[][] grid = new int[9][9];   
+int selectedRow = -1, selectedCol = -1;
+int bx, by, bw, bh;                      
+int timer = 0;                           
+boolean isWin = false;
 
-void settings() {
-  size(edge*2 + tile*9, edge*2 + tile*9);
-}
+void settings() { size(540, 600); }
 
 void setup() {
-  surface.setTitle("Sudoku");
-  noStroke();
-  loadPuzzle();       // import 009720483.txt
+  surface.setTitle("Sudoku (Processing)");
   textAlign(CENTER, CENTER);
-  textSize(tile * 0.5);
+
+  // Button geometry (bottom area)
+  bx = 170; by = 550; bw = 200; bh = 40;
+
+  // Load puzzle lines from data
+  dataLines = loadStrings("009720483.txt");
+  if (dataLines == null) {
+    println("[ERROR] '530070000.txt' not found in data/ folder.");
+    exit();
+    return;
+  }
+
+  // Parse up to 9 non-empty lines into the board 
+  // Important: only the first 9 characters per line are used
+  int r = 0;
+  for (int i = 0; i < dataLines.length && r < 9; i++) {
+    String line = trim(dataLines[i]);
+    if (line.length() == 0) continue;
+    for (int c = 0; c < 9; c++) {
+      char ch = line.charAt(c);
+      board[r][c] = (ch == '0') ? 0 : (ch - '0');
+    }
+    r++;
+  }
+
+  // Mark fixed cells
+  for (int i = 0; i < 9; i++) {
+    for (int j = 0; j < 9; j++) {
+      fix[i][j] = (board[i][j] != 0);
+    }
+  }
 }
 
 void draw() {
-  background(245);
-
-  fill(255);
-  rect(edge, edge, tile*9, tile*9);
-  
-  // thin lines
-  stroke(0, 0, 0, 60);
-  strokeWeight(1);
-  for (int i = 1; i < 9; i++) {
-    line(edge, edge + i*tile, edge + tile*9, edge + i*tile);
-    line(edge + i*tile, edge, edge + i*tile, edge + tile*9);
+  background(255);
+  if (timer > 0 && millis() > timer) {
+    wrong.clear();
+    timer = 0;
   }
 
-  // thick lines
+  paintBase();     // fill background for fixed cells (to distinguish)
+  paintWrong();    // highlight conflicting cells
+  makeGrid();      // draw grid lines (thicker every 3 cells)
+  showNumbers();   // draw all digits
+  highlightCell(); // outline selected cell
+  paintBtn();      // draw the "Check the numbers" button
+
+  if (isWin) showWinMessage();
+}
+
+// Fill a light gray background for fixed cells so the player knows they are uneditable
+void paintBase() {
+  float cellSize = width / 9.0f;
+  noStroke();
+  fill(220);
+  for (int i = 0; i < 9; i++) {
+    for (int j = 0; j < 9; j++) {
+      if (fix[i][j]) rect(j * cellSize, i * cellSize, cellSize, cellSize);
+    }
+  }
+}
+
+// Paint pink overlay for cells currently flagged as conflicts
+void paintWrong() {
+  if (wrong.isEmpty()) return;
+  float cellSize = width / 9.0f;
+  noStroke();
+  fill(255, 150, 220);
+  for (Cell cell : wrong) {
+    rect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
+  }
+}
+
+// Draw grid lines; bold line every 3 cells for 3x3 boxes
+void makeGrid() {
+  float cellSize = width / 9.0f;
   stroke(0);
-  strokeWeight(2);
-  for (int i = 0; i <= 9; i += 3) {
-    line(edge, edge + i*tile, edge + tile*9, edge + i*tile);
-    line(edge + i*tile, edge, edge + i*tile, edge + tile*9);
+  for (int i = 0; i <= 9; i++) {
+    strokeWeight((i % 3 == 0) ? 3 : 1);
+    line(i * cellSize, 0, i * cellSize, 540);
+    line(0, i * cellSize, width, i * cellSize);
   }
+}
 
-  // draw numbers from grid
-  fill(20); 
-  for (int r = 0; r < 9; r++) {
-    for (int c = 0; c < 9; c++) {
-      int v = grid[r][c];
-      if (v != 0) {
-        float x = edge + c*tile + tile/2;
-        float y = edge + r*tile + tile/2 - 2;
-        text(v, x, y);
+// Render digits centered in each non-zero cell
+void showNumbers() {
+  float cellSize = width / 9.0f;
+  textSize(32);
+  fill(0);
+  for (int i = 0; i < 9; i++) {
+    for (int j = 0; j < 9; j++) {
+      int num = board[i][j];
+      if (num != 0) {
+        float posX = j * cellSize + cellSize / 2;
+        float posY = i * cellSize + cellSize / 2;
+        text(num, posX, posY);
       }
     }
   }
 }
 
-void loadPuzzle() {
-  String[] lines = null;
-  try {
-    lines = loadStrings("009720483.txt"); 
-  } catch (Exception e) {
-    
+// Outline the currently selected cell (if any)
+void highlightCell() {
+  if (selectedRow >= 0 && selectedCol >= 0) {
+    float cellSize = width / 9.0f;
+    noFill();
+    stroke(200, 100, 200);
+    strokeWeight(4);
+    rect(selectedCol * cellSize, selectedRow * cellSize, cellSize, cellSize);
+  }
+}
+
+// Draw a simple clickable button for checking the board
+void paintBtn() {
+  if (mouseX >= bx && mouseX <= bx + bw && mouseY >= by && mouseY <= by + bh) {
+    fill(100, 150, 255);
+  } else {
+    fill(120, 180, 255);
+  }
+  stroke(50);
+  strokeWeight(2);
+  rect(bx, by, bw, bh, 8);
+
+  fill(255);
+  noStroke();
+  textSize(20);
+  textAlign(CENTER, CENTER);
+  text("Check the numbers", bx + bw / 2, by + bh / 2);
+}
+
+// Mouse click: either click the button or select a board cell
+void mousePressed() {
+  // Clicked the button?
+  if (mouseX >= bx && mouseX <= bx + bw && mouseY >= by && mouseY <= by + bh) {
+    huntWrong();
+    return;
   }
 
-  if (lines == null || lines.length < 9) 
-      return;
+  // Otherwise, select a cell based on mouse position
+  float cellSize = width / 9.0f;
+  int col = (int)(mouseX / cellSize);
+  int row = (int)(mouseY / cellSize);
 
-  for (int r = 0; r < 9; r++) {
-    String row = lines[r];
-    while (row.length() < 9) row += "0";
+  if (row >= 0 && row < 9 && col >= 0 && col < 9) {
+    selectedRow = row;
+    selectedCol = col;
+  }
+}
+
+// Keyboard input: fill/clear the selected cell if it's not fixed
+void keyPressed() {
+  if (selectedRow >= 0 && selectedCol >= 0) {
+    if (!fix[selectedRow][selectedCol]) {
+      if (key >= '1' && key <= '9') {
+        board[selectedRow][selectedCol] = (key - '0');
+        wrong.clear(); timer = 0; isWin = false;
+      } else if (keyCode == BACKSPACE || keyCode == DELETE || key == '0') {
+        board[selectedRow][selectedCol] = 0;
+        wrong.clear(); timer = 0; isWin = false;
+      }
+    }
+  }
+}
+
+// Check for duplicates in rows, columns, and 3x3 boxes
+// Note: this does NOT solve the Sudoku; it only flags conflicts
+// If there are no conflicts AND no zeros -> win
+void huntWrong() {
+  wrong.clear();
+
+  // Are all cells filled?
+  boolean allFilled = true;
+  for (int r = 0; r < 9 && allFilled; r++) {
     for (int c = 0; c < 9; c++) {
-      char ch = row.charAt(c);
-      int v = 0;
+      if (board[r][c] == 0) { allFilled = false; break; }
+    }
+  }
+
+  // Row duplicates
+  for (int row = 0; row < 9; row++) {
+    for (int col = 0; col < 9; col++) {
+      int val = board[row][col];
+      if (val != 0) {
+        for (int checkCol = col + 1; checkCol < 9; checkCol++) {
+          if (board[row][checkCol] == val) {
+            markWrong(row, col);
+            markWrong(row, checkCol);
+          }
+        }
+      }
+    }
+  }
+
+  // Column duplicates
+  for (int column = 0; column < 9; column++) {
+    for (int r = 0; r < 9; r++) {
+      int val = board[r][column];
+      if (val != 0) {
+        for (int checkR = r + 1; checkR < 9; checkR++) {
+          if (board[checkR][column] == val) {
+            markWrong(r, column);
+            markWrong(checkR, column);
+          }
+        }
+      }
+    }
+  }
+
+  // 3x3 box duplicates
+  for (int boxR = 0; boxR < 3; boxR++) {
+    for (int boxC = 0; boxC < 3; boxC++) {
+      huntBox(boxR * 3, boxC * 3);
+    }
+  }
+
+  // Win condition: everything filled and no conflicts
+  if (wrong.isEmpty() && allFilled) {
+    isWin = true;
+  } else if (!wrong.isEmpty()) {
+    timer = millis() + 5000; // keep conflict highlight for 5 seconds
+  }
+}
+
+// Scan a single 3x3 box for duplicates
+void huntBox(int startR, int startC) {
+  ArrayList<CellVal> cells = new ArrayList<CellVal>();
+  for (int r = startR; r < startR + 3; r++) {
+    for (int c = startC; c < startC + 3; c++) {
+      if (board[r][c] != 0) cells.add(new CellVal(r, c, board[r][c]));
+    }
+  }
+  for (int i = 0; i < cells.size(); i++) {
+    for (int j = i + 1; j < cells.size(); j++) {
+      if (cells.get(i).val == cells.get(j).val) {
+        markWrong(cells.get(i).r, cells.get(i).c);
+        markWrong(cells.get(j).r, cells.get(j).c);
+      }
+    }
+  }
+}
+
+// Add a cell to "wrong" if it isn't already in the list
+void markWrong(int r, int c) {
+  for (Cell cell : wrong) {
+    if (cell.r == r && cell.c == c) return; // avoid duplicates
+  }
+  wrong.add(new Cell(r, c));
+}
+
+// Simple modal win overlay
+void showWinMessage() {
+  // Dim the screen
+  fill(0, 0, 0, 180);
+  noStroke();
+  rect(0, 0, width, height);
+
+  // Message box
+  fill(255, 220, 100);
+  stroke(255, 180, 0);
+  strokeWeight(4);
+  rectMode(CENTER);
+  rect(width / 2.0f, height / 2.0f, 300, 150, 15);
+
+  // Text
+  fill(255, 100, 50);
+  noStroke();
+  textSize(48);
+  textAlign(CENTER, CENTER);
+  text("🎉 You Win! 🎉", width / 2.0f, height / 2.0f - 20);
+
+  textSize(20);
+  fill(80);
+  text("Congratulations!", width / 2.0f, height / 2.0f + 30);
+
+  rectMode(CORNER);
+}
+
+class Cell { int r, c; Cell(int r, int c){ this.r = r; this.c = c; } }
+class CellVal { int r, c, val; CellVal(int r,int c,int val){ this.r=r; this.c=c; this.val=val; } }
       if (ch >= '1' && ch <= '9') v = ch - '0';
       grid[r][c] = v;
     }
