@@ -8,25 +8,40 @@ int bx, by, bw, bh;
 int timer = 0;                           
 boolean isWin = false;
 
-void settings() { size(540, 600); }
+// Android-specific
+float gridSize;
+float cellSize;
+boolean showNumPad = false;
+int numPadX, numPadY, numPadSize;
+
+void settings() { 
+  fullScreen();
+}
 
 void setup() {
-  surface.setTitle("Sudoku (Processing)");
+  orientation(PORTRAIT);
   textAlign(CENTER, CENTER);
 
+  // Calculate grid to fit screen with padding
+  gridSize = min(width, height * 0.85f);
+  cellSize = gridSize / 9.0f;
+  
   // Button geometry (bottom area)
-  bx = 170; by = 550; bw = 200; bh = 40;
+  bw = (int)(width * 0.6f);
+  bh = (int)(height * 0.08f);
+  bx = (width - bw) / 2;
+  by = (int)(gridSize + (height - gridSize - bh) / 2);
 
-  // Load puzzle lines from data
+  // Load puzzle lines from data folder
   dataLines = loadStrings("009720483.txt");
-  if (dataLines == null) {
-    println("[ERROR] '530070000.txt' not found in data/ folder.");
+  if (dataLines == null || dataLines.length == 0) {
+    println("[ERROR] '009720483.txt' not found in data/ folder.");
+    println("Please add the puzzle file to the data folder and restart.");
     exit();
     return;
   }
 
   // Parse up to 9 non-empty lines into the board 
-  // Important: only the first 9 characters per line are used
   int r = 0;
   for (int i = 0; i < dataLines.length && r < 9; i++) {
     String line = trim(dataLines[i]);
@@ -48,24 +63,34 @@ void setup() {
 
 void draw() {
   background(255);
+  
   if (timer > 0 && millis() > timer) {
     wrong.clear();
     timer = 0;
   }
 
-  paintBase();     // fill background for fixed cells (to distinguish)
-  paintWrong();    // highlight conflicting cells
-  makeGrid();      // draw grid lines (thicker every 3 cells)
-  showNumbers();   // draw all digits
-  highlightCell(); // outline selected cell
-  paintBtn();      // draw the "Check the numbers" button
+  pushMatrix();
+  // Center the grid horizontally if needed
+  translate((width - gridSize) / 2, 0);
+  
+  paintBase();
+  paintWrong();
+  makeGrid();
+  showNumbers();
+  highlightCell();
+  
+  popMatrix();
+  
+  paintBtn();
+  
+  if (showNumPad) {
+    drawNumberPad();
+  }
 
   if (isWin) showWinMessage();
 }
 
-// Fill a light gray background for fixed cells so the player knows they are uneditable
 void paintBase() {
-  float cellSize = width / 9.0f;
   noStroke();
   fill(220);
   for (int i = 0; i < 9; i++) {
@@ -75,10 +100,8 @@ void paintBase() {
   }
 }
 
-// Paint pink overlay for cells currently flagged as conflicts
 void paintWrong() {
   if (wrong.isEmpty()) return;
-  float cellSize = width / 9.0f;
   noStroke();
   fill(255, 150, 220);
   for (Cell cell : wrong) {
@@ -86,21 +109,17 @@ void paintWrong() {
   }
 }
 
-// Draw grid lines; bold line every 3 cells for 3x3 boxes
 void makeGrid() {
-  float cellSize = width / 9.0f;
   stroke(0);
   for (int i = 0; i <= 9; i++) {
     strokeWeight((i % 3 == 0) ? 3 : 1);
-    line(i * cellSize, 0, i * cellSize, 540);
-    line(0, i * cellSize, width, i * cellSize);
+    line(i * cellSize, 0, i * cellSize, gridSize);
+    line(0, i * cellSize, gridSize, i * cellSize);
   }
 }
 
-// Render digits centered in each non-zero cell
 void showNumbers() {
-  float cellSize = width / 9.0f;
-  textSize(32);
+  textSize(cellSize * 0.55f);
   fill(0);
   for (int i = 0; i < 9; i++) {
     for (int j = 0; j < 9; j++) {
@@ -114,10 +133,8 @@ void showNumbers() {
   }
 }
 
-// Outline the currently selected cell (if any)
 void highlightCell() {
   if (selectedRow >= 0 && selectedCol >= 0) {
-    float cellSize = width / 9.0f;
     noFill();
     stroke(200, 100, 200);
     strokeWeight(4);
@@ -125,7 +142,6 @@ void highlightCell() {
   }
 }
 
-// Draw a simple clickable button for checking the board
 void paintBtn() {
   if (mouseX >= bx && mouseX <= bx + bw && mouseY >= by && mouseY <= by + bh) {
     fill(100, 150, 255);
@@ -138,60 +154,181 @@ void paintBtn() {
 
   fill(255);
   noStroke();
-  textSize(20);
+  textSize(bh * 0.4f);
   textAlign(CENTER, CENTER);
-  text("Check the numbers", bx + bw / 2, by + bh / 2);
+  text("Check Numbers", bx + bw / 2, by + bh / 2);
 }
 
-// Mouse click: either click the button or select a board cell
+// Handle touch events
 void mousePressed() {
-  // Clicked the button?
+  // Check if number pad is showing
+  if (showNumPad) {
+    handleNumberPadClick();
+    return;
+  }
+  
+  // Check if button was pressed
   if (mouseX >= bx && mouseX <= bx + bw && mouseY >= by && mouseY <= by + bh) {
     huntWrong();
     return;
   }
 
-  // Otherwise, select a cell based on mouse position
-  float cellSize = width / 9.0f;
-  int col = (int)(mouseX / cellSize);
-  int row = (int)(mouseY / cellSize);
+  // Adjust mouse coordinates for grid offset
+  float gridOffsetX = (width - gridSize) / 2;
+  float adjustedX = mouseX - gridOffsetX;
+  
+  // Check if touch is within grid
+  if (adjustedX >= 0 && adjustedX < gridSize && mouseY >= 0 && mouseY < gridSize) {
+    int col = (int)(adjustedX / cellSize);
+    int row = (int)(mouseY / cellSize);
 
-  if (row >= 0 && row < 9 && col >= 0 && col < 9) {
-    selectedRow = row;
-    selectedCol = col;
-  }
-}
-
-// Keyboard input: fill/clear the selected cell if it's not fixed
-void keyPressed() {
-  if (selectedRow >= 0 && selectedCol >= 0) {
-    if (!fix[selectedRow][selectedCol]) {
-      if (key >= '1' && key <= '9') {
-        board[selectedRow][selectedCol] = (key - '0');
-        wrong.clear(); timer = 0; isWin = false;
-      } else if (keyCode == BACKSPACE || keyCode == DELETE || key == '0') {
-        board[selectedRow][selectedCol] = 0;
-        wrong.clear(); timer = 0; isWin = false;
+    if (row >= 0 && row < 9 && col >= 0 && col < 9) {
+      selectedRow = row;
+      selectedCol = col;
+      // Show number pad if cell is not fixed
+      if (!fix[selectedRow][selectedCol]) {
+        showNumPad = true;
       }
     }
   }
 }
 
-// Check for duplicates in rows, columns, and 3x3 boxes
-// Note: this does NOT solve the Sudoku; it only flags conflicts
-// If there are no conflicts AND no zeros -> win
+// Draw number pad overlay
+void drawNumberPad() {
+  // Semi-transparent background
+  fill(0, 0, 0, 200);
+  noStroke();
+  rect(0, 0, width, height);
+  
+  // Number pad background
+  numPadSize = (int)(width * 0.8f);
+  numPadX = (width - numPadSize) / 2;
+  numPadY = (height - numPadSize) / 2;
+  
+  fill(240);
+  stroke(100);
+  strokeWeight(3);
+  rect(numPadX, numPadY, numPadSize, numPadSize, 15);
+  
+  // Draw number buttons (1-9) in 3x3 grid
+  int btnSize = numPadSize / 3;
+  for (int i = 0; i < 9; i++) {
+    int row = i / 3;
+    int col = i % 3;
+    int num = i + 1;
+    
+    int btnX = numPadX + col * btnSize;
+    int btnY = numPadY + row * btnSize;
+    
+    // Check if mouse is over this button
+    boolean hover = mouseX >= btnX && mouseX < btnX + btnSize && 
+                    mouseY >= btnY && mouseY < btnY + btnSize;
+    
+    // Draw button
+    if (hover) {
+      fill(100, 150, 255);
+    } else {
+      fill(255);
+    }
+    stroke(100);
+    strokeWeight(2);
+    rect(btnX + 5, btnY + 5, btnSize - 10, btnSize - 10, 10);
+    
+    // Draw number
+    fill(0);
+    noStroke();
+    textSize(btnSize * 0.5f);
+    textAlign(CENTER, CENTER);
+    text(num, btnX + btnSize / 2, btnY + btnSize / 2);
+  }
+  
+  // Draw Clear button at bottom
+  int clearBtnW = numPadSize / 2;
+  int clearBtnH = (int)(btnSize * 0.6f);
+  int clearBtnX = numPadX + (numPadSize - clearBtnW) / 2;
+  int clearBtnY = numPadY + numPadSize + 20;
+  
+  boolean hoverClear = mouseX >= clearBtnX && mouseX <= clearBtnX + clearBtnW &&
+                       mouseY >= clearBtnY && mouseY <= clearBtnY + clearBtnH;
+  
+  if (hoverClear) {
+    fill(255, 100, 100);
+  } else {
+    fill(255, 150, 150);
+  }
+  stroke(100);
+  strokeWeight(2);
+  rect(clearBtnX, clearBtnY, clearBtnW, clearBtnH, 10);
+  
+  fill(255);
+  noStroke();
+  textSize(clearBtnH * 0.4f);
+  text("Clear", clearBtnX + clearBtnW / 2, clearBtnY + clearBtnH / 2);
+}
+
+// Handle number pad button clicks
+void handleNumberPadClick() {
+  int btnSize = numPadSize / 3;
+  
+  // Check number buttons (1-9)
+  for (int i = 0; i < 9; i++) {
+    int row = i / 3;
+    int col = i % 3;
+    int num = i + 1;
+    
+    int btnX = numPadX + col * btnSize;
+    int btnY = numPadY + row * btnSize;
+    
+    if (mouseX >= btnX && mouseX < btnX + btnSize && 
+        mouseY >= btnY && mouseY < btnY + btnSize) {
+      // Set the number
+      board[selectedRow][selectedCol] = num;
+      wrong.clear();
+      timer = 0;
+      isWin = false;
+      showNumPad = false;
+      return;
+    }
+  }
+  
+  // Check Clear button
+  int clearBtnW = numPadSize / 2;
+  int clearBtnH = (int)(btnSize * 0.6f);
+  int clearBtnX = numPadX + (numPadSize - clearBtnW) / 2;
+  int clearBtnY = numPadY + numPadSize + 20;
+  
+  if (mouseX >= clearBtnX && mouseX <= clearBtnX + clearBtnW &&
+      mouseY >= clearBtnY && mouseY <= clearBtnY + clearBtnH) {
+    // Clear the cell
+    board[selectedRow][selectedCol] = 0;
+    wrong.clear();
+    timer = 0;
+    isWin = false;
+    showNumPad = false;
+    return;
+  }
+  
+  // Click outside number pad - close it
+  if (mouseX < numPadX || mouseX > numPadX + numPadSize ||
+      mouseY < numPadY - 50 || mouseY > numPadY + numPadSize + 100) {
+    showNumPad = false;
+  }
+}
+
 void huntWrong() {
   wrong.clear();
 
-  // Are all cells filled?
   boolean allFilled = true;
   for (int r = 0; r < 9 && allFilled; r++) {
     for (int c = 0; c < 9; c++) {
-      if (board[r][c] == 0) { allFilled = false; break; }
+      if (board[r][c] == 0) { 
+        allFilled = false; 
+        break; 
+      }
     }
   }
 
-  // Row duplicates
+  // Check rows
   for (int row = 0; row < 9; row++) {
     for (int col = 0; col < 9; col++) {
       int val = board[row][col];
@@ -206,7 +343,7 @@ void huntWrong() {
     }
   }
 
-  // Column duplicates
+  // Check columns
   for (int column = 0; column < 9; column++) {
     for (int r = 0; r < 9; r++) {
       int val = board[r][column];
@@ -221,22 +358,20 @@ void huntWrong() {
     }
   }
 
-  // 3x3 box duplicates
+  // Check 3x3 boxes
   for (int boxR = 0; boxR < 3; boxR++) {
     for (int boxC = 0; boxC < 3; boxC++) {
       huntBox(boxR * 3, boxC * 3);
     }
   }
 
-  // Win condition: everything filled and no conflicts
   if (wrong.isEmpty() && allFilled) {
     isWin = true;
   } else if (!wrong.isEmpty()) {
-    timer = millis() + 5000; // keep conflict highlight for 5 seconds
+    timer = millis() + 5000;
   }
 }
 
-// Scan a single 3x3 box for duplicates
 void huntBox(int startR, int startC) {
   ArrayList<CellVal> cells = new ArrayList<CellVal>();
   for (int r = startR; r < startR + 3; r++) {
@@ -254,46 +389,76 @@ void huntBox(int startR, int startC) {
   }
 }
 
-// Add a cell to "wrong" if it isn't already in the list
 void markWrong(int r, int c) {
   for (Cell cell : wrong) {
-    if (cell.r == r && cell.c == c) return; // avoid duplicates
+    if (cell.r == r && cell.c == c) return;
   }
   wrong.add(new Cell(r, c));
 }
 
-// Simple modal win overlay
 void showWinMessage() {
-  // Dim the screen
   fill(0, 0, 0, 180);
   noStroke();
   rect(0, 0, width, height);
 
-  // Message box
   fill(255, 220, 100);
   stroke(255, 180, 0);
   strokeWeight(4);
   rectMode(CENTER);
-  rect(width / 2.0f, height / 2.0f, 300, 150, 15);
+  rect(width / 2.0f, height / 2.0f, width * 0.8f, height * 0.3f, 15);
 
-  // Text
   fill(255, 100, 50);
   noStroke();
-  textSize(48);
+  textSize(width * 0.12f);
   textAlign(CENTER, CENTER);
-  text("🎉 You Win! 🎉", width / 2.0f, height / 2.0f - 20);
+  text("You Win!", width / 2.0f, height / 2.0f - height * 0.05f);
 
-  textSize(20);
+  textSize(width * 0.05f);
   fill(80);
-  text("Congratulations!", width / 2.0f, height / 2.0f + 30);
+  text("Congratulations!", width / 2.0f, height / 2.0f + height * 0.05f);
 
   rectMode(CORNER);
 }
 
-class Cell { int r, c; Cell(int r, int c){ this.r = r; this.c = c; } }
-class CellVal { int r, c, val; CellVal(int r,int c,int val){ this.r=r; this.c=c; this.val=val; } }
-      if (ch >= '1' && ch <= '9') v = ch - '0';
-      grid[r][c] = v;
+// Handle Android back button
+void keyPressed() {
+  if (key == CODED) {
+    if (keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+      // Handle back button - you can add exit confirmation here
+    }
+  } else {
+    // Number input
+    if (selectedRow >= 0 && selectedCol >= 0) {
+      if (!fix[selectedRow][selectedCol]) {
+        if (key >= '1' && key <= '9') {
+          board[selectedRow][selectedCol] = (key - '0');
+          wrong.clear(); 
+          timer = 0; 
+          isWin = false;
+        } else if (key == '0' || key == DELETE || key == BACKSPACE) {
+          board[selectedRow][selectedCol] = 0;
+          wrong.clear(); 
+          timer = 0; 
+          isWin = false;
+        }
+      }
     }
   }
+}
+
+class Cell { 
+  int r, c; 
+  Cell(int r, int c){ 
+    this.r = r; 
+    this.c = c; 
+  } 
+}
+
+class CellVal { 
+  int r, c, val; 
+  CellVal(int r, int c, int val){ 
+    this.r = r; 
+    this.c = c; 
+    this.val = val; 
+  } 
 }
